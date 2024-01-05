@@ -68,7 +68,24 @@ async function getFlowInfo(req, res) {
             return;
         }
 
-        success(res, parseFlowHeaders(flowHeaders));
+//<<<<<<< fix-negative-value
+        // unit is KB
+        const uploadMatch = flowHeaders.match(/upload=(-?)(\d+)/)
+        const upload = Number(uploadMatch[1] + uploadMatch[2]);
+
+        const downloadMatch = flowHeaders.match(/download=(-?)(\d+)/)
+        const download = Number(downloadMatch[1] + downloadMatch[2]);
+
+        const total = Number(flowHeaders.match(/total=(\d+)/)[1]);
+
+        // optional expire timestamp
+        const match = flowHeaders.match(/expire=(\d+)/);
+        const expires = match ? Number(match[1]) : undefined;
+
+        success(res, { expires, total, usage: { upload, download } });
+//=======
+        //success(res, parseFlowHeaders(flowHeaders));
+//>>>>>>> master
     } catch (err) {
         failed(
             res,
