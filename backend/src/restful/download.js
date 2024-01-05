@@ -20,6 +20,27 @@ async function downloadSubscription(req, res) {
         req.query.target || getPlatformFromHeaders(req.headers) || 'JSON';
 
     $.info(`正在下载订阅：${name}`);
+    let { url, ua, content, mergeSources, ignoreFailedRemoteSub } = req.query;
+    if (url) {
+        url = decodeURIComponent(url);
+        $.info(`指定远程订阅 URL: ${url}`);
+    }
+    if (ua) {
+        ua = decodeURIComponent(ua);
+        $.info(`指定远程订阅 User-Agent: ${ua}`);
+    }
+    if (content) {
+        content = decodeURIComponent(content);
+        $.info(`指定本地订阅: ${content}`);
+    }
+    if (mergeSources) {
+        mergeSources = decodeURIComponent(mergeSources);
+        $.info(`指定合并来源: ${mergeSources}`);
+    }
+    if (ignoreFailedRemoteSub != null && ignoreFailedRemoteSub !== '') {
+        ignoreFailedRemoteSub = decodeURIComponent(ignoreFailedRemoteSub);
+        $.info(`指定忽略失败的远程订阅: ${ignoreFailedRemoteSub}`);
+    }
 
     const allSubs = $.read(SUBS_KEY);
     const sub = findByName(allSubs, name);
@@ -29,13 +50,26 @@ async function downloadSubscription(req, res) {
                 type: 'subscription',
                 name,
                 platform,
+                url,
+                ua,
+                content,
+                mergeSources,
+                ignoreFailedRemoteSub,
             });
 
-            if (sub.source !== 'local') {
-                // forward flow headers
-                const flowInfo = await getFlowHeaders(sub.url);
-                if (flowInfo) {
-                    res.set('subscription-userinfo', flowInfo);
+            if (sub.source !== 'local' || url) {
+                try {
+                    // forward flow headers
+                    const flowInfo = await getFlowHeaders(url || sub.url);
+                    if (flowInfo) {
+                        res.set('subscription-userinfo', flowInfo);
+                    }
+                } catch (err) {
+                    $.error(
+                        `订阅 ${name} 获取流量信息时发生错误: ${JSON.stringify(
+                            err,
+                        )}`,
+                    );
                 }
             }
 
@@ -50,15 +84,15 @@ async function downloadSubscription(req, res) {
             $.notify(
                 `🌍 Sub-Store 下载订阅失败`,
                 `❌ 无法下载订阅：${name}！`,
-                `🤔 原因：${JSON.stringify(err)}`,
+                `🤔 原因：${err.message ?? err}`,
             );
-            $.error(JSON.stringify(err));
+            $.error(err.message ?? err);
             failed(
                 res,
                 new InternalServerError(
                     'INTERNAL_SERVER_ERROR',
                     `Failed to download subscription: ${name}`,
-                    `Reason: ${JSON.stringify(err)}`,
+                    `Reason: ${err.message ?? err}`,
                 ),
             );
         }
@@ -87,12 +121,20 @@ async function downloadCollection(req, res) {
 
     $.info(`正在下载组合订阅：${name}`);
 
+    let { ignoreFailedRemoteSub } = req.query;
+
+    if (ignoreFailedRemoteSub != null && ignoreFailedRemoteSub !== '') {
+        ignoreFailedRemoteSub = decodeURIComponent(ignoreFailedRemoteSub);
+        $.info(`指定忽略失败的远程订阅: ${ignoreFailedRemoteSub}`);
+    }
+
     if (collection) {
         try {
             const output = await produceArtifact({
                 type: 'collection',
                 name,
                 platform,
+                ignoreFailedRemoteSub,
             });
 
             // forward flow header from the first subscription in this collection
@@ -101,9 +143,17 @@ async function downloadCollection(req, res) {
             if (subnames.length > 0) {
                 const sub = findByName(allSubs, subnames[0]);
                 if (sub.source !== 'local') {
-                    const flowInfo = await getFlowHeaders(sub.url);
-                    if (flowInfo) {
-                        res.set('subscription-userinfo', flowInfo);
+                    try {
+                        const flowInfo = await getFlowHeaders(sub.url);
+                        if (flowInfo) {
+                            res.set('subscription-userinfo', flowInfo);
+                        }
+                    } catch (err) {
+                        $.error(
+                            `组合订阅 ${name} 中的子订阅 ${
+                                sub.name
+                            } 获取流量信息时发生错误: ${err.message ?? err}`,
+                        );
                     }
                 }
             }
@@ -126,7 +176,7 @@ async function downloadCollection(req, res) {
                 new InternalServerError(
                     'INTERNAL_SERVER_ERROR',
                     `Failed to download collection: ${name}`,
-                    `Reason: ${JSON.stringify(err)}`,
+                    `Reason: ${err.message ?? err}`,
                 ),
             );
         }

@@ -6,7 +6,7 @@ import {
 } from './errors';
 import { deleteByName, findByName, updateByName } from '@/utils/database';
 import { SUBS_KEY, COLLECTIONS_KEY, ARTIFACTS_KEY } from '@/constants';
-import { getFlowHeaders } from '@/utils/flow';
+import { getFlowHeaders, parseFlowHeaders } from '@/utils/flow';
 import { success, failed } from './response';
 import $ from '@/core/app';
 
@@ -20,7 +20,10 @@ export default function register($app) {
         .patch(updateSubscription)
         .delete(deleteSubscription);
 
-    $app.route('/api/subs').get(getAllSubscriptions).post(createSubscription);
+    $app.route('/api/subs')
+        .get(getAllSubscriptions)
+        .post(createSubscription)
+        .put(replaceSubscriptions);
 }
 
 // subscriptions API
@@ -65,6 +68,7 @@ async function getFlowInfo(req, res) {
             return;
         }
 
+//<<<<<<< fix-negative-value
         // unit is KB
         const uploadMatch = flowHeaders.match(/upload=(-?)(\d+)/)
         const upload = Number(uploadMatch[1] + uploadMatch[2]);
@@ -79,6 +83,9 @@ async function getFlowInfo(req, res) {
         const expires = match ? Number(match[1]) : undefined;
 
         success(res, { expires, total, usage: { upload, download } });
+//=======
+        //success(res, parseFlowHeaders(flowHeaders));
+//>>>>>>> master
     } catch (err) {
         failed(
             res,
@@ -93,6 +100,16 @@ async function getFlowInfo(req, res) {
 function createSubscription(req, res) {
     const sub = req.body;
     $.info(`正在创建订阅： ${sub.name}`);
+    if (/\//.test(sub.name)) {
+        failed(
+            res,
+            new RequestInvalidError(
+                'INVALID_NAME',
+                `Subscription ${sub.name} is invalid`,
+            ),
+        );
+        return;
+    }
     const allSubs = $.read(SUBS_KEY);
     if (findByName(allSubs, sub.name)) {
         failed(
@@ -102,6 +119,7 @@ function createSubscription(req, res) {
                 `Subscription ${sub.name} already exists.`,
             ),
         );
+        return;
     }
     allSubs.push(sub);
     $.write(allSubs, SUBS_KEY);
@@ -201,4 +219,10 @@ function deleteSubscription(req, res) {
 function getAllSubscriptions(req, res) {
     const allSubs = $.read(SUBS_KEY);
     success(res, allSubs);
+}
+
+function replaceSubscriptions(req, res) {
+    const allSubs = req.body;
+    $.write(allSubs, SUBS_KEY);
+    success(res);
 }
